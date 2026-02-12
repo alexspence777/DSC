@@ -1,0 +1,37 @@
+import streamlit as st
+import joblib
+import xgboost as xgb
+import pandas as pd
+
+st.title("Employee Attrition Risk Calculator")
+
+model = joblib.load("models/final_xgboost_model.pkl")
+
+st.write("Enter employee details below:")
+
+overtime = st.checkbox("Works Overtime", value=False)
+satisfaction = st.slider("Overall Job Satisfaction (1-4)", 1, 4, 3)
+income = st.number_input("Monthly Income ($)", 1000, 20000, 5000)
+distance = st.slider("Distance from Home (miles)", 1, 30, 10)
+years_promotion = st.slider("Years Since Last Promotion", 0, 15, 2)
+
+# Create input row with defaults
+input_data = pd.DataFrame(0.0, index=[0], columns=model.feature_names)
+input_data["OverTime_Yes"] = int(overtime)
+input_data["JobSatisfaction"] = satisfaction
+input_data["MonthlyIncome"] = income
+input_data["DistanceFromHome"] = distance
+input_data["YearsSinceLastPromotion"] = years_promotion
+
+dmat = xgb.DMatrix(input_data)
+prob = model.predict(dmat)[0]
+risk = prob * 100
+
+st.metric("Predicted Attrition Risk", f"{risk:.1f}%")
+
+if risk > 40:
+    st.error("HIGH RISK - urgent manager discussion recommended")
+elif risk > 20:
+    st.warning("Elevated risk - consider career conversation")
+else:
+    st.success("Low risk")
