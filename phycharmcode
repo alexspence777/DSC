@@ -1,0 +1,57 @@
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.regression import LinearRegression
+from pyspark.ml.evaluation import RegressionEvaluator
+
+print("=== Simple Abalone ML (No external packages) ===")
+
+spark = SparkSession.builder.appName("AbaloneSimple").getOrCreate()
+print("Spark created")
+
+# Load CSV, no header
+raw_df = spark.read.option("inferSchema", "true").csv("hdfs://master:9000/data/abalone/abalone.csv")
+print("Raw loaded")
+print("Raw rows:", raw_df.count())
+
+# Rename columns manually (matches CSV order)
+df = raw_df.toDF(
+    "sex", "length", "diameter", "height", "whole_weight",
+    "shucked_weight", "viscera_weight", "shell_weight", "rings"
+)
+print("Columns renamed")
+print("Clean rows:", df.count())
+print("Schema:")
+df.printSchema()
+
+# Drop sex (categorical) - use only numeric
+numeric_df = df.drop("sex")
+
+# Assemble features
+assembler = VectorAssembler(
+    inputCols=["length", "diameter", "height", "whole_weight", "shucked_weight", "viscera_weight", "shell_weight"],
+    outputCol="features"
+)
+
+data = assembler.transform(numeric_df).select("features", numeric_df["rings"].cast("double").alias("rings"))
+print("Features assembled")
+print("Data rows:", data.count())
+
+# Split
+train, test = data.randomSplit([0.8, 0.2], seed=42)
+print("Split done")
+print("Train rows:", train.count())
+print("Test rows:", test.count())
+
+# Train
+lr = LinearRegression(featuresCol="features", labelCol="rings", maxIter=10)
+model = lr.fit(train)
+print("Model trained")
+
+# Predict & evaluate
+predictions = model.transform(test)
+evaluator = RegressionEvaluator(labelCol="rings", predictionCol="prediction", metricName="rmse")
+rmse = evaluator.evaluate(predictions)
+print("RMSE on test set:", rmse)
+
+spark.stop()
+print("=== Done ===")
